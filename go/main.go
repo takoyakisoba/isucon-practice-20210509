@@ -407,6 +407,30 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 	return userSimple, err
 }
 
+func getUserSimples(q sqlx.Queryer, userIds []int64) (map[int64]UserSimple, error) {
+	userMap := make(map[int64]UserSimple, len(userIds))
+
+	query, params, err := sqlx.In("SELECT * FROM `users` WHERE `id` in (?)", userIds)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := q.Queryx(query, params...)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var u UserSimple
+		if err := rows.StructScan(&u); err != nil {
+			return nil, err
+		}
+		userMap[u.ID] = u
+	}
+
+	return userMap, nil
+}
+
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
 	err = sqlx.Get(q, &category, "SELECT * FROM `categories` WHERE `id` = ?", categoryID)
 	if category.ParentID != 0 {
@@ -912,10 +936,32 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var userIds []int64
+	userDedupeMap := map[int64]bool{}
+
+	for _, item := range items {
+		if _, ok := userDedupeMap[item.SellerID]; !ok {
+			userDedupeMap[item.SellerID] = true
+			userIds = append(userIds, item.SellerID)
+		}
+		if _, ok := userDedupeMap[item.BuyerID]; !ok {
+			userDedupeMap[item.BuyerID] = true
+			userIds = append(userIds, item.BuyerID)
+		}
+	}
+
+	userMap, err := getUserSimples(tx, userIds)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+
 	itemDetails := []ItemDetail{}
 	for _, item := range items {
-		seller, err := getUserSimpleByID(tx, item.SellerID)
-		if err != nil {
+		seller, ok := userMap[item.SellerID]
+		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			tx.Rollback()
 			return
@@ -947,8 +993,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if item.BuyerID != 0 {
-			buyer, err := getUserSimpleByID(tx, item.BuyerID)
-			if err != nil {
+			buyer, ok := userMap[item.BuyerID]
+			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 				tx.Rollback()
 				return
