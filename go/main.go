@@ -1348,58 +1348,92 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx := dbx.MustBegin()
-
 	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", rb.ItemID)
+	err = dbx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", rb.ItemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
-		tx.Rollback()
 		return
 	}
 	if err != nil {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
 		return
 	}
 
 	if targetItem.Status != ItemStatusOnSale {
 		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
-		tx.Rollback()
 		return
 	}
 
 	if targetItem.SellerID == buyer.ID {
 		outputErrorMsg(w, http.StatusForbidden, "自分の商品は買えません")
-		tx.Rollback()
 		return
 	}
 
 	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", targetItem.SellerID)
+	err = dbx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ?", targetItem.SellerID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
-		tx.Rollback()
 		return
 	}
 	if err != nil {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
 		return
 	}
 
-	category, err := getCategoryByID(tx, targetItem.CategoryID)
+	category, err := getCategoryByID(dbx, targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "category id error")
-		tx.Rollback()
 		return
 	}
+
+	scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
+		ToAddress:   buyer.Address,
+		ToName:      buyer.AccountName,
+		FromAddress: seller.Address,
+		FromName:    seller.AccountName,
+	})
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+
+		return
+	}
+
+	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
+		ShopID: PaymentServiceIsucariShopID,
+		Token:  rb.Token,
+		APIKey: PaymentServiceIsucariAPIKey,
+		Price:  targetItem.Price,
+	})
+	if err != nil {
+		log.Print(err)
+
+		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
+		return
+	}
+
+	if pstr.Status == "invalid" {
+		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
+		return
+	}
+
+	if pstr.Status == "fail" {
+		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
+		return
+	}
+
+	if pstr.Status != "ok" {
+		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
+		return
+	}
+
+	tx := dbx.MustBegin()
 
 	result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		targetItem.SellerID,
@@ -1439,52 +1473,6 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
-		ToAddress:   buyer.Address,
-		ToName:      buyer.AccountName,
-		FromAddress: seller.Address,
-		FromName:    seller.AccountName,
-	})
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-		tx.Rollback()
-
-		return
-	}
-
-	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
-		ShopID: PaymentServiceIsucariShopID,
-		Token:  rb.Token,
-		APIKey: PaymentServiceIsucariAPIKey,
-		Price:  targetItem.Price,
-	})
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
-		tx.Rollback()
-		return
-	}
-
-	if pstr.Status == "invalid" {
-		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
-		tx.Rollback()
-		return
-	}
-
-	if pstr.Status == "fail" {
-		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
-		tx.Rollback()
-		return
-	}
-
-	if pstr.Status != "ok" {
-		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 		tx.Rollback()
 		return
 	}
