@@ -4,6 +4,7 @@ import (
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -81,9 +82,9 @@ type User struct {
 }
 
 type UserSimple struct {
-	ID           int64  `json:"id"`
-	AccountName  string `json:"account_name"`
-	NumSellItems int    `json:"num_sell_items"`
+	ID           int64  `json:"id" db:"id"`
+	AccountName  string `json:"account_name" db:"account_name"`
+	NumSellItems int    `json:"num_sell_items" db:"num_sell_items"`
 }
 
 type Item struct {
@@ -167,7 +168,7 @@ type Category struct {
 	ID                 int    `json:"id" db:"id"`
 	ParentID           int    `json:"parent_id" db:"parent_id"`
 	CategoryName       string `json:"category_name" db:"category_name"`
-	ParentCategoryName string `json:"parent_category_name,omitempty" db:"-"`
+	ParentCategoryName string `json:"parent_category_name,omitempty" db:"parent_category_name"`
 }
 
 type reqInitialize struct {
@@ -268,6 +269,8 @@ type resSetting struct {
 	Categories        []Category `json:"categories"`
 }
 
+var categoryMap map[int]Category
+
 func init() {
 	store = sessions.NewCookieStore([]byte("abc"))
 
@@ -318,6 +321,20 @@ func main() {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
 	defer dbx.Close()
+
+	categoryMap = map[int]Category{}
+	rows, err := dbx.Queryx("SELECT c.id, c.parent_id, c.category_name, ifnull(p.category_name, '') as parent_category_name from categories as c left join categories as p on p.id = c.parent_id")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	for rows.Next() {
+		var c Category
+		if err := rows.StructScan(&c); err != nil {
+			log.Fatalln(err)
+		}
+		categoryMap[c.ID] = c
+	}
+
 
 	mux := goji.NewMux()
 
@@ -407,16 +424,37 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 	return userSimple, err
 }
 
-func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	err = sqlx.Get(q, &category, "SELECT * FROM `categories` WHERE `id` = ?", categoryID)
-	if category.ParentID != 0 {
-		parentCategory, err := getCategoryByID(q, category.ParentID)
-		if err != nil {
-			return category, err
-		}
-		category.ParentCategoryName = parentCategory.CategoryName
+func getUserSimples(q sqlx.Queryer, userIds []int64) (map[int64]UserSimple, error) {
+	userMap := make(map[int64]UserSimple, len(userIds))
+
+	query, params, err := sqlx.In("SELECT id, account_name, num_sell_items FROM `users` WHERE `id` in (?)", userIds)
+	if err != nil {
+		return nil, err
 	}
-	return category, err
+
+	rows, err := q.Queryx(query, params...)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var u UserSimple
+		if err := rows.StructScan(&u); err != nil {
+			return nil, err
+		}
+		userMap[u.ID] = u
+	}
+
+	return userMap, nil
+}
+
+func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
+	c, ok := categoryMap[categoryID]
+	if ok {
+		return c, nil
+	}
+
+	return category, errors.New(fmt.Sprintf("category not found. categoryID=%d", categoryID))
 }
 
 func getConfigByName(name string) (string, error) {
@@ -912,10 +950,32 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var userIds []int64
+	userDedupeMap := map[int64]bool{}
+
+	for _, item := range items {
+		if _, ok := userDedupeMap[item.SellerID]; !ok {
+			userDedupeMap[item.SellerID] = true
+			userIds = append(userIds, item.SellerID)
+		}
+		if _, ok := userDedupeMap[item.BuyerID]; !ok {
+			userDedupeMap[item.BuyerID] = true
+			userIds = append(userIds, item.BuyerID)
+		}
+	}
+
+	userMap, err := getUserSimples(tx, userIds)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+
 	itemDetails := []ItemDetail{}
 	for _, item := range items {
-		seller, err := getUserSimpleByID(tx, item.SellerID)
-		if err != nil {
+		seller, ok := userMap[item.SellerID]
+		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			tx.Rollback()
 			return
@@ -947,8 +1007,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if item.BuyerID != 0 {
-			buyer, err := getUserSimpleByID(tx, item.BuyerID)
-			if err != nil {
+			buyer, ok := userMap[item.BuyerID]
+			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 				tx.Rollback()
 				return
