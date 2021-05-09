@@ -12,3 +12,4 @@ export LANG="C.UTF-8"
 cd $CURRENT_DIR
 
 cat 01_schema.sql 02_categories.sql initial.sql | mysql --defaults-file=/dev/null -h $MYSQL_HOST -P $MYSQL_PORT -u $MYSQL_USER $MYSQL_DBNAME
+mysql -u $MYSQL_USER $MYSQL_DBNAME -p $MYSQL_PASS -e 'CREATE INDEX idx_items_status_category_id_created_at ON items (status, category_id, created_at);'
