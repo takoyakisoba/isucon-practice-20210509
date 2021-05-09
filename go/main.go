@@ -321,6 +321,8 @@ func main() {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
 	defer dbx.Close()
+	dbx.SetMaxOpenConns(50)
+	dbx.SetMaxIdleConns(50)
 
 	categoryMap = map[int]Category{}
 	rows, err := dbx.Queryx("SELECT c.id, c.parent_id, c.category_name, ifnull(p.category_name, '') as parent_category_name from categories as c left join categories as p on p.id = c.parent_id")
