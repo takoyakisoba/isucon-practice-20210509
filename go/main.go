@@ -1405,6 +1405,27 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx := dbx.MustBegin()
+	result, err := tx.Exec("UPDATE `items` SET `buyer_id` = ?, `status` = ?, `updated_at` = ? WHERE `id` = ? and status = 'on_sale'",
+		buyer.ID,
+		ItemStatusTrading,
+		time.Now(),
+		targetItem.ID,
+	)
+	if err != nil {
+		_ = tx.Rollback()
+		log.Print(err)
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		_ = tx.Rollback()
+		outputErrorMsg(w, http.StatusInternalServerError, "sold out")
+		return
+	}
+
 	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
 		ShopID: PaymentServiceIsucariShopID,
 		Token:  rb.Token,
@@ -1412,6 +1433,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		Price:  targetItem.Price,
 	})
 	if err != nil {
+		_ = tx.Rollback()
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
@@ -1419,23 +1441,24 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pstr.Status == "invalid" {
+		_ = tx.Rollback()
 		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
 		return
 	}
 
 	if pstr.Status == "fail" {
+		_ = tx.Rollback()
 		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
 		return
 	}
 
 	if pstr.Status != "ok" {
+		_ = tx.Rollback()
 		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 		return
 	}
 
-	tx := dbx.MustBegin()
-
-	result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+	result, err = tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		targetItem.SellerID,
 		buyer.ID,
 		TransactionEvidenceStatusWaitShipping,
