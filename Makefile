@@ -19,6 +19,7 @@ truncate-logs:
 	sudo truncate --size 0 /var/log/nginx/access.log
 	sudo truncate --size 0 /var/log/nginx/error.log
 	sudo truncate --size 0 /var/log/mysql/error.log
+	sudo truncate --size 0 /var/log/mysql/mysql-slow.sql
 
 bench:
 	ssh -l ubuntu 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://18.183.105.62:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
