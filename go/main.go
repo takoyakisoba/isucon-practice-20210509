@@ -330,7 +330,7 @@ func main() {
 	for rows.Next() {
 		var c Category
 		if err := rows.StructScan(&c); err != nil {
-			log.Fatalln(c)
+			log.Fatalln(err)
 		}
 		categoryMap[c.ID] = c
 	}
