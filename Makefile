@@ -21,7 +21,18 @@ truncate-logs:
 	sudo truncate --size 0 /var/log/mysql/error.log
 
 bench:
-	@echo "TODO: impl" && exit 1
+  ssh -l ubuntu -i .ssh/id_rsa 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://18.183.105.62:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
+  ssh -l ubuntu -i .ssh/id_rsa 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://54.199.205.107:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
+  ssh -l ubuntu -i .ssh/id_rsa 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://54.178.100.114:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
+
+bench-a:
+  ssh -l ubuntu -i .ssh/id_rsa 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://18.183.105.62:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
+
+bench-b:
+	ssh -l ubuntu -i .ssh/id_rsa 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://54.178.100.114:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
+
+bench-c:
+	ssh -l ubuntu -i .ssh/id_rsa 13.231.82.53 cd /home/isucon/isucari \&\& /home/isucon/isucari/bin/benchmarker -target-url http://54.178.100.114:80 -shipment-url http://13.231.82.53:7000 -payment-url http://13.231.82.53:5555
 
 kataribe:
 	sudo cp /var/log/nginx/access.log /tmp/last-access.log && sudo chmod 666 /tmp/last-access.log
