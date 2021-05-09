@@ -3,8 +3,7 @@
 gogo: services/stop build truncate-logs services/start
 
 build:
-	#cd app && make build
-	echo "buildしてくれ〜〜"
+	cd go/ && make isucari
 
 services/stop:
 	sudo systemctl stop isucari.golang
