@@ -4,6 +4,7 @@ import (
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -268,6 +269,8 @@ type resSetting struct {
 	Categories        []Category `json:"categories"`
 }
 
+var categoryMap map[int]Category
+
 func init() {
 	store = sessions.NewCookieStore([]byte("abc"))
 
@@ -318,6 +321,20 @@ func main() {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
 	defer dbx.Close()
+
+	categoryMap = map[int]Category{}
+	rows, err := dbx.Queryx("SELECT * from categories")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	for rows.Next() {
+		var c Category
+		if err := rows.StructScan(&c); err != nil {
+			log.Fatalln(c)
+		}
+		categoryMap[c.ID] = c
+	}
+
 
 	mux := goji.NewMux()
 
@@ -432,15 +449,12 @@ func getUserSimples(q sqlx.Queryer, userIds []int64) (map[int64]UserSimple, erro
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	err = sqlx.Get(q, &category, "SELECT * FROM `categories` WHERE `id` = ?", categoryID)
-	if category.ParentID != 0 {
-		parentCategory, err := getCategoryByID(q, category.ParentID)
-		if err != nil {
-			return category, err
-		}
-		category.ParentCategoryName = parentCategory.CategoryName
+	c, ok := categoryMap[categoryID]
+	if ok {
+		return c, nil
 	}
-	return category, err
+
+	return category, errors.New(fmt.Sprintf("category not found. categoryID=%s", categoryID))
 }
 
 func getConfigByName(name string) (string, error) {
