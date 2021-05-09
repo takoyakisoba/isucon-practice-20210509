@@ -33,6 +33,9 @@ CREATE TABLE `items` (
   INDEX idx_category_id (`category_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4;
 
+CREATE INDEX idx_items_status_category_id_created_at ON items (status, category_id, created_at);
+CREATE INDEX idx_items_seller_id_status ON items (status, seller_id);
+
 DROP TABLE IF EXISTS `transaction_evidences`;
 CREATE TABLE `transaction_evidences` (
   `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
