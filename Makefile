@@ -1,6 +1,6 @@
 .PHONY: gogo
 
-gogo: services/stop build truncate-logs services/start
+gogo: services/stop build truncate-logs services/start bench
 
 build:
 	cd go/ && make isucari
@@ -17,6 +17,9 @@ services/start:
 
 truncate-logs:
 	sudo truncate --size 0 /var/log/nginx/access.log
+
+bench:
+	@echo "TODO: impl" && exit 1
 
 kataribe:
 	cd ../ && sudo cat /var/log/nginx/access.log | ./kataribe -conf kataribe.toml
