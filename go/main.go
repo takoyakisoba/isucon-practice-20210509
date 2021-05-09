@@ -168,7 +168,7 @@ type Category struct {
 	ID                 int    `json:"id" db:"id"`
 	ParentID           int    `json:"parent_id" db:"parent_id"`
 	CategoryName       string `json:"category_name" db:"category_name"`
-	ParentCategoryName string `json:"parent_category_name,omitempty" db:"-"`
+	ParentCategoryName string `json:"parent_category_name,omitempty" db:"parent_category_name"`
 }
 
 type reqInitialize struct {
@@ -323,7 +323,7 @@ func main() {
 	defer dbx.Close()
 
 	categoryMap = map[int]Category{}
-	rows, err := dbx.Queryx("SELECT * from categories")
+	rows, err := dbx.Queryx("SELECT c.id, c.parent_id, c.category_name, p.category_name from categories as c left join categories as p on p.id = c.parent_id")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -454,7 +454,7 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err err
 		return c, nil
 	}
 
-	return category, errors.New(fmt.Sprintf("category not found. categoryID=%s", categoryID))
+	return category, errors.New(fmt.Sprintf("category not found. categoryID=%d", categoryID))
 }
 
 func getConfigByName(name string) (string, error) {
