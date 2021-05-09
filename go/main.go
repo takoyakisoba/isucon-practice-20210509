@@ -1422,7 +1422,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	affected, _ := result.RowsAffected()
 	if affected != 1 {
 		_ = tx.Rollback()
-		outputErrorMsg(w, http.StatusInternalServerError, "sold out")
+		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
 		return
 	}
 
