@@ -17,10 +17,13 @@ services/start:
 
 truncate-logs:
 	sudo truncate --size 0 /var/log/nginx/access.log
+	sudo truncate --size 0 /var/log/nginx/error.log
+	sudo truncate --size 0 /var/log/mysql/error.log
 
 bench:
 	@echo "TODO: impl" && exit 1
 
 kataribe:
-	cd ../ && sudo cat /var/log/nginx/access.log | ./kataribe -conf kataribe.toml
-
+	sudo cp /var/log/nginx/access.log /tmp/last-access.log && sudo chmod 666 /tmp/last-access.log
+	cd ../ && cat /tmp/last-access.log | ./kataribe -conf kataribe.toml > /tmp/kataribe.log
+	cat /tmp/kataribe.log
